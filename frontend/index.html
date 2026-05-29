@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trackr — Job Application Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app" id="app">
+
+  <!-- HEADER -->
+  <header class="header">
+    <div class="logo">
+      <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true">
+        <rect x="1" y="1" width="9" height="9" rx="2.5" fill="#6c63ff" opacity="0.9"/>
+        <rect x="12" y="1" width="9" height="9" rx="2.5" fill="#6c63ff" opacity="0.4"/>
+        <rect x="1" y="12" width="9" height="9" rx="2.5" fill="#6c63ff" opacity="0.4"/>
+        <rect x="12" y="12" width="9" height="9" rx="2.5" fill="#6c63ff" opacity="0.7"/>
+      </svg>
+      Track<span>r</span>
+    </div>
+    <div class="header-actions">
+      <button class="btn btn-sm" id="btn-paste" aria-label="Smart paste">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg>
+        Smart paste
+      </button>
+      <button class="btn btn-green btn-sm" id="btn-gmail" aria-label="Sync Gmail">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        Sync Gmail
+      </button>
+      <button class="btn btn-primary btn-sm" id="btn-add" aria-label="Add application">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add application
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- STATS -->
+    <div class="stats-grid" id="stats-grid" role="region" aria-label="Application statistics">
+      <div class="stat-card skeleton" aria-hidden="true"></div>
+      <div class="stat-card skeleton" aria-hidden="true"></div>
+      <div class="stat-card skeleton" aria-hidden="true"></div>
+      <div class="stat-card skeleton" aria-hidden="true"></div>
+      <div class="stat-card skeleton" aria-hidden="true"></div>
+    </div>
+
+    <!-- TOOLBAR -->
+    <div class="toolbar" role="toolbar" aria-label="Filter and view controls">
+      <div class="search-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input class="search-input" id="search-input" placeholder="Search company or role…" type="search" aria-label="Search applications">
+      </div>
+      <select class="select-input" id="sort-select" aria-label="Sort applications">
+        <option value="date">Newest first</option>
+        <option value="company">Company A–Z</option>
+        <option value="priority">By priority</option>
+        <option value="stage">By stage</option>
+      </select>
+      <div id="filter-tag-wrap" role="status" aria-live="polite"></div>
+      <div class="ml-auto view-toggle" role="group" aria-label="View type">
+        <button class="view-btn active" id="btn-kanban" aria-pressed="true" title="Kanban view">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="5" height="18" rx="1"/><rect x="10" y="3" width="5" height="12" rx="1"/><rect x="17" y="3" width="5" height="15" rx="1"/></svg>
+        </button>
+        <button class="view-btn" id="btn-list" aria-pressed="false" title="List view">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- KANBAN BOARD -->
+    <div class="board-wrap" id="kanban-view" role="region" aria-label="Kanban board">
+      <div class="board" id="board"></div>
+    </div>
+
+    <!-- LIST VIEW -->
+    <div class="list-view" id="list-view" role="region" aria-label="List view" hidden>
+      <div class="list-table-wrap">
+        <table class="list-table" id="list-table">
+          <thead>
+            <tr>
+              <th scope="col">Company</th>
+              <th scope="col">Role</th>
+              <th scope="col">Stage</th>
+              <th scope="col">Priority</th>
+              <th scope="col">Applied</th>
+              <th scope="col">Salary</th>
+              <th scope="col">Location</th>
+            </tr>
+          </thead>
+          <tbody id="list-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- MODAL OVERLAY -->
+<div id="modal-overlay" class="modal-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="modal-title">
+  <div class="modal" id="modal-box" tabindex="-1"></div>
+</div>
+
+<!-- Toast notification -->
+<div id="toast" class="toast" role="alert" aria-live="assertive" hidden></div>
+
+<!-- Runtime config: replace BACKEND_URL with your Railway URL for production -->
+<script>
+  window.BACKEND_URL = 'RAILWAY_BACKEND_URL';
+  if (!window.BACKEND_URL || window.BACKEND_URL === 'RAILWAY_BACKEND_URL') {
+    window.BACKEND_URL = 'http://localhost:8000';
+  }
+</script>
+<script src="js/api.js"></script>
+<script src="js/board.js"></script>
+<script src="js/modals.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
