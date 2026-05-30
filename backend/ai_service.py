@@ -77,6 +77,7 @@ def parse_batch(emails: list[dict]) -> list[dict]:
                 )
             combined = "\n".join(lines)
             print(f"  Chunk {idx}/{len(chunks)}: {len(combined)} chars, {len(chunk)} emails")
+            print(f"  Sample email: {lines[0][:200]}")
 
             message = client.messages.create(
                 model="claude-sonnet-4-5",
@@ -86,6 +87,7 @@ def parse_batch(emails: list[dict]) -> list[dict]:
             )
 
             raw = message.content[0].text.strip()
+            print(f"  Chunk {idx} raw response (first 500 chars): {raw[:500]}")
             raw = raw.replace("```json","").replace("```","").strip()
 
             start = raw.find("[")
