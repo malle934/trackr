@@ -1,20 +1,17 @@
 FROM python:3.11-slim
 
-# Set working directory
 WORKDIR /app
 
-# Copy backend files
-COPY backend/requirements.txt .
+# Copy and install requirements first (better caching)
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy all backend source code
-COPY backend/ .
+# Copy all backend source files
+COPY . .
 
-# Create data directory for JSON storage
+# Create data directory
 RUN mkdir -p /app/data
 
-# Expose port
 EXPOSE 8000
 
-# Start server
 CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
