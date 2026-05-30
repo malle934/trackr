@@ -55,83 +55,58 @@ def parse_single(text: str) -> dict:
 
 
 def parse_batch(emails: list[dict]) -> list[dict]:
-    """Parse all emails in ONE API call using subject+snippet only (cheap & fast)."""
+    """Parse all emails efficiently — subject+sender only, max 50 per call."""
     if not emails:
         return []
 
-    print(f"  Building optimized batch for {len(emails)} emails (subject+snippet only)...")
-
-    # Build compact email list — subject + sender + date + first 200 chars only
-    lines = []
-    for i, email in enumerate(emails, 1):
-        snippet = (email.get('body','') or email.get('snippet','')).strip()[:200]
-        lines.append(
-            f"[{i}] Date:{email.get('date','')} | From:{email.get('from','')} | "
-            f"Subject:{email.get('subject','')} | Snippet:{snippet}"
-        )
-
-    combined = "\n".join(lines)
-    print(f"  Sending {len(combined)} chars to Claude in 1 API call...")
-
-    try:
-        message = client.messages.create(
-            model="claude-sonnet-4-5",
-            max_tokens=4000,
-            system=BATCH_SYSTEM,
-            messages=[{"role": "user", "content": combined}]
-        )
-        raw = message.content[0].text.strip()
-        raw = raw.replace("```json","").replace("```","").strip()
-
-        # Find JSON array
-        start = raw.find("[")
-        end   = raw.rfind("]") + 1
-        if start == -1 or end == 0:
-            print("  No JSON array in response")
-            return []
-
-        parsed = json.loads(raw[start:end])
-        if not isinstance(parsed, list):
-            return []
-
-        valid = [p for p in parsed if p.get("company")]
-        print(f"  ✓ Single API call extracted {len(valid)} job applications from {len(emails)} emails")
-        return valid
-
-    except json.JSONDecodeError as e:
-        print(f"  JSON parse error: {e}")
-        # Fallback to chunked if single call fails
-        print("  Falling back to chunked parsing...")
-        return _parse_batch_chunked(emails)
-    except Exception as e:
-        print(f"  Batch parse error: {e}")
-        return []
-
-
-def _parse_batch_chunked(emails: list[dict]) -> list[dict]:
-    """Fallback: process in chunks of 15 if single call fails."""
+    print(f"  Processing {len(emails)} emails in optimized batches...")
     all_parsed = []
-    chunks = [emails[i:i+15] for i in range(0, len(emails), 15)]
-    for i, chunk in enumerate(chunks, 1):
+
+    # Split into chunks of 50 — subject+sender only = ~100 chars each = ~5000 chars per chunk
+    chunk_size = 50
+    chunks = [emails[i:i+chunk_size] for i in range(0, len(emails), chunk_size)]
+    print(f"  Split into {len(chunks)} chunks of {chunk_size}")
+
+    for idx, chunk in enumerate(chunks, 1):
         try:
+            # Use ONLY subject + sender + date — no body/snippet at all
             lines = []
-            for j, email in enumerate(chunk, 1):
-                snippet = (email.get('body','') or email.get('snippet','')).strip()[:200]
-                lines.append(f"[{j}] Date:{email.get('date','')} | From:{email.get('from','')} | Subject:{email.get('subject','')} | Snippet:{snippet}")
+            for i, email in enumerate(chunk, 1):
+                lines.append(
+                    f"[{i}] {email.get('date','')} | {email.get('from','')} | {email.get('subject','')}"
+                )
+            combined = "\n".join(lines)
+            print(f"  Chunk {idx}/{len(chunks)}: {len(combined)} chars, {len(chunk)} emails")
+
             message = client.messages.create(
                 model="claude-sonnet-4-5",
-                max_tokens=2000,
+                max_tokens=4000,
                 system=BATCH_SYSTEM,
-                messages=[{"role": "user", "content": "\n".join(lines)}]
+                messages=[{"role": "user", "content": combined}]
             )
-            raw = message.content[0].text.strip().replace("```json","").replace("```","").strip()
-            start = raw.find("["); end = raw.rfind("]")+1
-            if start == -1: continue
+
+            raw = message.content[0].text.strip()
+            raw = raw.replace("```json","").replace("```","").strip()
+
+            start = raw.find("[")
+            end   = raw.rfind("]") + 1
+
+            if start == -1 or end == 0:
+                print(f"  Chunk {idx}: no JSON array found, skipping")
+                continue
+
             parsed = json.loads(raw[start:end])
             if isinstance(parsed, list):
-                all_parsed.extend([p for p in parsed if p.get("company")])
-            print(f"  Chunk {i}/{len(chunks)}: extracted {len(parsed)} apps")
-        except Exception as e:
-            print(f"  Chunk {i} error: {e}")
+                valid = [p for p in parsed if p.get("company")]
+                all_parsed.extend(valid)
+                print(f"  Chunk {idx}: extracted {len(valid)} job applications")
+
+        except json.JSONDecodeError as e:
+            print(f"  Chunk {idx} JSON error: {e}, skipping")
             continue
+        except Exception as e:
+            print(f"  Chunk {idx} error: {e}, skipping")
+            continue
+
+    print(f"  ✓ Total extracted: {len(all_parsed)} job applications from {len(emails)} emails")
     return all_parsed
