@@ -260,15 +260,43 @@ def _fetch_emails_since(email: str, since_date: str) -> list[dict]:
 
 
 def _parse_date(date_str: str) -> str:
+    """
+    Parse email date — use the EXACT date from the email header.
+    Gmail shows the sender's local date, so we preserve that directly.
+    No UTC conversion — that causes off-by-one day errors.
+    """
+    if not date_str:
+        from datetime import date as _date
+        return _date.today().isoformat()
+
+    import re
+
+    # Try full datetime formats with timezone
     formats = [
         "%a, %d %b %Y %H:%M:%S %z",
         "%d %b %Y %H:%M:%S %z",
         "%a, %d %b %Y %H:%M:%S %Z",
         "%d %b %Y %H:%M:%S %Z",
+        "%a, %d %b %Y %H:%M:%S",
+        "%d %b %Y %H:%M:%S",
     ]
     for fmt in formats:
         try:
-            return datetime.strptime(date_str.strip(), fmt).strftime("%Y-%m-%d")
+            dt = datetime.strptime(date_str.strip(), fmt)
+            # Return the date AS-IS from the email header
+            # (day/month/year exactly as shown in Gmail)
+            return f"{dt.year}-{str(dt.month).zfill(2)}-{str(dt.day).zfill(2)}"
         except ValueError:
             continue
-    return datetime.utcnow().strftime("%Y-%m-%d")
+
+    # Fallback — extract date parts with regex
+    match = re.search(r'(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})', date_str, re.IGNORECASE)
+    if match:
+        try:
+            dt = datetime.strptime(match.group(0).strip(), "%d %b %Y")
+            return f"{dt.year}-{str(dt.month).zfill(2)}-{str(dt.day).zfill(2)}"
+        except ValueError:
+            pass
+
+    from datetime import date as _date
+    return _date.today().isoformat()
