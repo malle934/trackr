@@ -253,26 +253,34 @@ def sync_gmail(email: str) -> SyncResult:
 
     # Smart incremental fetch
     try:
-        raw_emails, fetch_from, is_first = gmail_service.fetch_job_emails_incremental(email)
-        print(f"✓ Found {len(raw_emails)} job emails (scanned since {fetch_from})")
+        job_emails, skipped_emails, fetch_from, is_first = gmail_service.fetch_job_emails_incremental(email)
+        print(f"✓ Found {len(job_emails)} job emails, {len(skipped_emails)} need review (since {fetch_from})")
     except Exception as e:
         print(f"ERROR fetching emails:\n{traceback.format_exc()}")
         raise HTTPException(status_code=502, detail=f"Gmail fetch failed: {str(e)}")
 
-    if not raw_emails:
-        # Still update sync history even if no new emails
+    if not job_emails and not skipped_emails:
         today = datetime.utcnow().strftime("%Y-%m-%d")
         storage.save_sync_history(email, today, 0)
         print("No new job emails found")
-        return SyncResult(found=0, added=0, duplicates=0, items=[])
+        return SyncResult(found=0, added=0, duplicates=0, items=[], skipped_emails=[])
 
     # Gemini AI parse
     try:
-        parsed_list = ai_service.parse_batch(raw_emails)
+        parsed_list = ai_service.parse_batch(job_emails)
         print(f"✓ Gemini parsed {len(parsed_list)} job applications")
     except Exception as e:
         print(f"ERROR in AI parsing:\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"AI parsing failed: {str(e)}")
+
+    # Track which emails AI couldn't parse — add to skipped for review
+    parsed_subjects = set(p.get("email_subject","").lower() for p in parsed_list)
+    ai_skipped = [
+        e for e in job_emails
+        if e.get("subject","").lower() not in parsed_subjects
+    ]
+    all_skipped = skipped_emails + ai_skipped
+    print(f"  Skipped for review: {len(skipped_emails)} keyword-filtered + {len(ai_skipped)} AI-missed = {len(all_skipped)} total")
 
     # Upsert into storage
     added = 0
@@ -301,14 +309,20 @@ def sync_gmail(email: str) -> SyncResult:
             print(f"  ERROR upserting {parsed.get('company')}: {e}")
             continue
 
-    # Save sync history — mark today as last synced
+    # Save sync history
     today = datetime.utcnow().strftime("%Y-%m-%d")
-    storage.save_sync_history(email, today, len(raw_emails))
-    print(f"✓ Sync complete — {added} added, {duplicates} skipped\n")
+    storage.save_sync_history(email, today, len(job_emails))
+    print(f"✓ Sync complete — {added} added, {duplicates} skipped, {len(all_skipped)} need review\n")
 
     return SyncResult(
         found=len(parsed_list),
         added=added,
         duplicates=duplicates,
         items=items,
+        skipped_emails=[{
+            "subject": e.get("subject", ""),
+            "from":    e.get("from", ""),
+            "date":    e.get("date", ""),
+            "snippet": e.get("snippet", ""),
+        } for e in all_skipped[:50]]  # max 50 for review
     )

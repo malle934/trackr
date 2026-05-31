@@ -63,6 +63,7 @@ class SyncResult(BaseModel):
     added: int
     duplicates: int
     items: list[dict]
+    skipped_emails: list[dict] = []  # emails that need manual review
 
 
 class AuthStatus(BaseModel):

@@ -200,7 +200,22 @@
     try {
       const result = await api.syncGmail(email);
       await refreshData();
-      modal.showSyncResults(result, () => { modal.close(); switchTab('pipeline'); });
+      modal.showSyncResults(result, () => { modal.close(); switchTab('pipeline'); }, (emailData) => {
+        // Pre-fill add modal with data from skipped email
+        modal.openAdd('applied', async (data) => {
+          try {
+            await api.createApplication(data);
+            modal.close();
+            toast('Application added ✓');
+            await refreshData();
+          } catch (err) { toast('Failed to save: ' + err.message); }
+        }, {
+          company:  emailData.domain,
+          title:    emailData.subject,
+          applied:  emailData.date,
+          notes:    `From: ${emailData.from}\n${emailData.snippet}`,
+        });
+      });
     } catch (err) {
       modal.showSyncError(() => api.startGmailAuth());
       console.error(err);

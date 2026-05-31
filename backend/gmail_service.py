@@ -79,6 +79,54 @@ def _is_job_email(subject: str, snippet: str) -> bool:
     return any(kw in text for kw in JOB_KEYWORDS)
 
 
+# Vague subjects that need body text to confirm
+VAGUE_SUBJECTS = [
+    "hi", "hello", "hey", "following up", "follow up",
+    "next steps", "update", "re:", "fwd:", "checking in",
+    "quick question", "opportunity", "great news", "good news",
+    "important update", "your profile", "we noticed",
+    "touching base", "just wanted", "hope you",
+]
+
+def _is_vague_subject(subject: str) -> bool:
+    """Check if subject is too vague to classify without body."""
+    s = subject.lower().strip()
+    return any(s.startswith(v) or s == v for v in VAGUE_SUBJECTS) or len(s) < 15
+
+
+def _fetch_body(service, msg_id: str) -> str:
+    """Fetch first 500 chars of email body for vague subjects."""
+    try:
+        full = service.users().messages().get(
+            userId="me", id=msg_id, format="full"
+        ).execute()
+        return _extract_body_text(full.get("payload", {}))[:500]
+    except Exception:
+        return ""
+
+
+def _extract_body_text(payload: dict) -> str:
+    """Recursively extract plain text from email payload."""
+    import base64 as _b64
+    body = ""
+    mime = payload.get("mimeType", "")
+    if mime == "text/plain":
+        data = payload.get("body", {}).get("data", "")
+        if data:
+            body = _b64.urlsafe_b64decode(data + "==").decode("utf-8", errors="ignore")
+    elif mime == "text/html":
+        data = payload.get("body", {}).get("data", "")
+        if data:
+            import re
+            html = _b64.urlsafe_b64decode(data + "==").decode("utf-8", errors="ignore")
+            body = re.sub(r"<[^>]+>", " ", html)
+            body = re.sub(r"\s+", " ", body).strip()
+    elif "parts" in payload:
+        for part in payload["parts"]:
+            body += _extract_body_text(part)
+    return body
+
+
 # ── OAuth ─────────────────────────────────────────────────────
 
 def create_oauth_flow(state: Optional[str] = None) -> Flow:
@@ -160,37 +208,33 @@ def get_credentials(email: str) -> Optional[Credentials]:
 
 # ── Smart incremental email fetch ────────────────────────────
 
-def fetch_job_emails_incremental(email: str) -> tuple[list[dict], str, bool]:
+def fetch_job_emails_incremental(email: str) -> tuple[list[dict], list[dict], str, bool]:
     """
-    Smart incremental fetch:
-    - First ever sync  → fetch last 90 days
-    - Subsequent syncs → fetch only since last sync date
-    Returns: (emails, fetch_from_date, is_first_sync)
+    Smart incremental fetch.
+    Returns: (job_emails, skipped_emails, fetch_from_date, is_first_sync)
     """
     history = storage.get_sync_history(email)
     today   = datetime.utcnow().date()
 
     if history and history.get("synced_until"):
-        # Incremental — fetch only since last sync
-        last_date    = history["synced_until"]  # YYYY-MM-DD
-        fetch_from   = last_date
-        is_first     = False
+        fetch_from = history["synced_until"]
+        is_first   = False
         print(f"  Incremental sync from {fetch_from} → {today}")
     else:
-        # First sync — fetch last 90 days
-        fetch_from   = (datetime.utcnow() - timedelta(days=90)).strftime("%Y-%m-%d")
-        is_first     = True
+        fetch_from = (datetime.utcnow() - timedelta(days=90)).strftime("%Y-%m-%d")
+        is_first   = True
         print(f"  First sync — fetching last 90 days from {fetch_from}")
 
-    emails = _fetch_emails_since(email, fetch_from)
-    return emails, fetch_from, is_first
+    job_emails, skipped_emails = _fetch_emails_since(email, fetch_from)
+    return job_emails, skipped_emails, fetch_from, is_first
 
 
-def _fetch_emails_since(email: str, since_date: str) -> list[dict]:
+def _fetch_emails_since(email: str, since_date: str) -> tuple[list[dict], list[dict]]:
     """
-    Fetch emails since a given date.
-    Uses metadata only (fast) + keyword filter (smart).
-    Scans up to 500 emails, stops when 100 job emails found.
+    Fetch job emails since a given date.
+    Returns: (job_emails, skipped_emails)
+    - job_emails: confirmed job emails to send to AI
+    - skipped_emails: ambiguous emails for manual review
     """
     creds = get_credentials(email)
     if not creds:
@@ -201,23 +245,37 @@ def _fetch_emails_since(email: str, since_date: str) -> list[dict]:
 
     print(f"  Gmail query: after:{after_date}")
 
-    # Fetch metadata only — much faster than full format
-    result = service.users().messages().list(
-        userId="me",
-        q=f"after:{after_date}",
-        maxResults=500
-    ).execute()
+    # Fetch ALL emails metadata — paginate through results
+    messages = []
+    page_token = None
+    while True:
+        params = {
+            "userId": "me",
+            "q": f"after:{after_date}",
+            "maxResults": 500
+        }
+        if page_token:
+            params["pageToken"] = page_token
 
-    messages   = result.get("messages", [])
+        result     = service.users().messages().list(**params).execute()
+        batch      = result.get("messages", [])
+        messages.extend(batch)
+        page_token = result.get("nextPageToken")
+
+        print(f"  Fetched page: {len(batch)} emails (total so far: {len(messages)})")
+
+        if not page_token:
+            break
+
     print(f"  Total emails in inbox since {since_date}: {len(messages)}")
 
-    job_emails = []
-    scanned    = 0
+    job_emails     = []
+    skipped_emails = []
+    scanned        = 0
 
     for msg in messages:
         scanned += 1
         try:
-            # Fetch metadata only (headers + snippet) — very fast
             meta = service.users().messages().get(
                 userId="me",
                 id=msg["id"],
@@ -225,38 +283,47 @@ def _fetch_emails_since(email: str, since_date: str) -> list[dict]:
                 metadataHeaders=["Subject", "From", "Date"]
             ).execute()
 
-            headers = {
-                h["name"]: h["value"]
-                for h in meta.get("payload", {}).get("headers", [])
-            }
-            subject = headers.get("Subject", "")
-            sender  = headers.get("From", "")
-            date_str= headers.get("Date", "")
-            snippet = meta.get("snippet", "")
+            headers  = {h["name"]: h["value"] for h in meta.get("payload", {}).get("headers", [])}
+            subject  = headers.get("Subject", "")
+            sender   = headers.get("From",    "")
+            date_str = headers.get("Date",    "")
+            snippet  = meta.get("snippet",    "")
+            date     = _parse_date(date_str)
 
-            # Keyword filter — only process job emails
-            if not _is_job_email(subject, snippet):
-                continue
+            # Step 1 — keyword filter on subject + snippet
+            if _is_job_email(subject, snippet):
+                body = ""
+                # Step 2 — for vague subjects, fetch body for better context
+                if _is_vague_subject(subject):
+                    body = _fetch_body(service, msg["id"])
+                    print(f"  Vague subject '{subject[:40]}' — fetched body")
 
-            job_emails.append({
-                "subject": subject,
-                "from":    sender,
-                "date":    _parse_date(date_str),
-                "snippet": snippet[:300],
-                "body":    "",   # not needed — subject+snippet is enough
-            })
+                job_emails.append({
+                    "subject": subject,
+                    "from":    sender,
+                    "date":    date,
+                    "snippet": snippet[:300],
+                    "body":    body,
+                })
+            else:
+                # Step 3 — vague subject with no keywords → add to skipped for review
+                if _is_vague_subject(subject) and sender:
+                    skipped_emails.append({
+                        "subject": subject,
+                        "from":    sender,
+                        "date":    date,
+                        "snippet": snippet[:200],
+                    })
 
-            # Stop early once we have 100 job emails
-            if len(job_emails) >= 100:
-                print(f"  Reached 100 job emails after scanning {scanned} emails — stopping")
-                break
+            if scanned % 100 == 0:
+                print(f"  Progress: scanned {scanned}/{len(messages)}, found {len(job_emails)} job, {len(skipped_emails)} skipped")
 
         except Exception as e:
-            print(f"  Error fetching metadata for {msg['id']}: {e}")
+            print(f"  Error for {msg['id']}: {e}")
             continue
 
-    print(f"  Scanned {scanned}/{len(messages)} emails → found {len(job_emails)} job emails")
-    return job_emails
+    print(f"  Scanned {scanned}/{len(messages)} → {len(job_emails)} job emails, {len(skipped_emails)} need review")
+    return job_emails, skipped_emails
 
 
 def _parse_date(date_str: str) -> str:

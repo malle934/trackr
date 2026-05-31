@@ -39,9 +39,9 @@ const modal = (() => {
 
   // ── Add application ───────────────────────
 
-  function openAdd(stage = 'applied', onSave) {
-    const today = new Date().toISOString().slice(0, 10);
-    const fu    = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+  function openAdd(stage = 'applied', onSave, prefill = {}) {
+    const today = new Date().toISOString().slice(0,10);
+    const fu    = new Date(Date.now() + 7 * 864e5).toISOString().slice(0,10);
 
     show(`
       <div class="modal-header">
@@ -52,15 +52,15 @@ const modal = (() => {
         ${closeBtn()}
       </div>
       <div class="form-row">
-        <div class="form-field"><label>Company *</label><input id="f-co" placeholder="e.g. Google" autofocus></div>
-        <div class="form-field"><label>Job title</label><input id="f-title" placeholder="e.g. Software Engineer"></div>
+        <div class="form-field"><label>Company *</label><input id="f-co" placeholder="e.g. Google" value="${esc(prefill.company||'')}" autofocus></div>
+        <div class="form-field"><label>Job title</label><input id="f-title" placeholder="e.g. Software Engineer" value="${esc(prefill.title||'')}"></div>
       </div>
       <div class="form-row">
         <div class="form-field"><label>Stage</label><select id="f-stage">${stageOptions(stage)}</select></div>
         <div class="form-field"><label>Priority</label><select id="f-priority">${priorityOptions()}</select></div>
       </div>
       <div class="form-row">
-        <div class="form-field"><label>Date applied</label><input type="date" id="f-applied" value="${today}"></div>
+        <div class="form-field"><label>Date applied</label><input type="date" id="f-applied" value="${prefill.applied||today}"></div>
         <div class="form-field"><label>Follow-up date</label><input type="date" id="f-followup" value="${fu}"></div>
       </div>
       <div class="form-row">
@@ -68,7 +68,7 @@ const modal = (() => {
         <div class="form-field"><label>Location</label><input id="f-location" placeholder="Remote / NYC"></div>
       </div>
       <div class="form-field"><label>Job URL</label><input id="f-url" placeholder="https://company.com/jobs/..."></div>
-      <div class="form-field"><label>Notes</label><textarea id="f-notes" placeholder="Recruiter name, next steps, referral source…"></textarea></div>
+      <div class="form-field"><label>Notes</label><textarea id="f-notes" placeholder="Recruiter name, next steps…">${esc(prefill.notes||'')}</textarea></div>
       <div class="modal-footer">
         <button class="btn btn-ghost" onclick="modal.close()">Cancel</button>
         <div style="margin-left:auto">
@@ -356,44 +356,134 @@ const modal = (() => {
     </div>`);
   }
 
-  function showSyncResults(result, onDone) {
-    const color = result.added > 0 ? 'var(--green)' : 'var(--text3)';
+  function showSyncResults(result, onDone, onManualAdd) {
+    const added    = result.added      || 0;
+    const dups     = result.duplicates || 0;
+    const skipped  = (result.skipped_emails || []).length;
+    const addColor = added > 0 ? 'var(--green)' : 'var(--text3)';
+
     show(`
       <div class="modal-header">
         <div class="modal-title">Sync complete</div>
         ${closeBtn()}
       </div>
-      <div style="text-align:center;padding:1rem 0 1.25rem">
-        <div style="width:52px;height:52px;border-radius:50%;background:var(--green-bg);border:1px solid var(--green-border);display:flex;align-items:center;justify-content:center;margin:0 auto 12px">
-          <svg viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.5" width="22" height="22" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+
+      <div style="text-align:center;padding:0.75rem 0 1rem">
+        <div style="width:48px;height:48px;border-radius:50%;background:var(--green-bg);border:1px solid var(--green-border);display:flex;align-items:center;justify-content:center;margin:0 auto 10px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.5" width="20" height="20"><polyline points="20 6 9 17 4 12"/></svg>
         </div>
-        <div style="font-family:Syne,sans-serif;font-size:18px;font-weight:700;color:var(--text);margin-bottom:4px">Gmail synced</div>
+        <div style="font-family:Syne,sans-serif;font-size:17px;font-weight:700;color:var(--text)">Gmail synced</div>
       </div>
+
       <div class="sync-stats">
-        <div class="sync-stat"><div class="sync-stat-val" style="color:var(--text)">${result.found}</div><div class="sync-stat-lbl">Found</div></div>
-        <div class="sync-stat"><div class="sync-stat-val" style="color:${color}">${result.added}</div><div class="sync-stat-lbl">Added</div></div>
-        <div class="sync-stat"><div class="sync-stat-val" style="color:var(--text3)">${result.duplicates}</div><div class="sync-stat-lbl">Skipped</div></div>
+        <div class="sync-stat"><div class="sync-stat-val" style="color:${addColor}">${added}</div><div class="sync-stat-lbl">Added</div></div>
+        <div class="sync-stat"><div class="sync-stat-val" style="color:var(--text3)">${dups}</div><div class="sync-stat-lbl">Existing</div></div>
+        <div class="sync-stat"><div class="sync-stat-val" style="color:${skipped>0?'var(--amber)':'var(--text3)'}">${skipped}</div><div class="sync-stat-lbl">Review</div></div>
       </div>
-      <div class="sync-list">
-        ${result.items.map(item => `
-          <div class="sync-list-item">
-            <div style="flex:1;min-width:0">
-              <div class="sync-list-item-name">${esc(item.company)} — ${esc(item.title || 'Unknown role')}</div>
-              <div class="sync-list-item-sub">${esc(item.email_subject || item.email_date || '')}</div>
-            </div>
-            <div style="display:flex;align-items:center;gap:6px">
-              ${stagePillHtml(item.stage)}
-              ${item.is_new ? '<span class="new-badge">New</span>' : '<span class="dup-badge">Existing</span>'}
-            </div>
-          </div>`).join('')}
+
+      <!-- Tabs -->
+      <div style="display:flex;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:10px">
+        <button class="sync-tab active" data-tab="added" style="flex:1;padding:7px;background:var(--accent-bg);border:none;color:var(--accent2);font-family:DM Sans,sans-serif;font-size:12px;font-weight:500;cursor:pointer;border-right:1px solid var(--border)">
+          Added (${added})
+        </button>
+        <button class="sync-tab" data-tab="existing" style="flex:1;padding:7px;background:var(--surface2);border:none;color:var(--text2);font-family:DM Sans,sans-serif;font-size:12px;cursor:pointer;border-right:1px solid var(--border)">
+          Existing (${dups})
+        </button>
+        <button class="sync-tab" data-tab="review" style="flex:1;padding:7px;background:var(--surface2);border:none;color:${skipped>0?'var(--amber)':'var(--text2)'};font-family:DM Sans,sans-serif;font-size:12px;cursor:pointer">
+          Review (${skipped})
+        </button>
       </div>
+
+      <!-- Added tab -->
+      <div id="sync-panel-added" class="sync-list">
+        ${result.items.filter(i=>i.is_new).length === 0
+          ? `<div style="text-align:center;padding:1.5rem;color:var(--text3);font-size:13px">No new applications added</div>`
+          : result.items.filter(i=>i.is_new).map(item=>`
+            <div class="sync-list-item">
+              <div style="flex:1;min-width:0">
+                <div class="sync-list-item-name">${esc(item.company)} — ${esc(item.title||'Unknown role')}</div>
+                <div class="sync-list-item-sub">${esc(item.email_subject||item.email_date||'')}</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:5px">
+                <span class="stage-pill stage-${item.stage}">${STAGES.find(s=>s.id===item.stage)?.label||item.stage}</span>
+                <span class="new-badge">New</span>
+              </div>
+            </div>`).join('')}
+      </div>
+
+      <!-- Existing tab -->
+      <div id="sync-panel-existing" class="sync-list" style="display:none">
+        ${result.items.filter(i=>!i.is_new).length === 0
+          ? `<div style="text-align:center;padding:1.5rem;color:var(--text3);font-size:13px">No duplicates</div>`
+          : result.items.filter(i=>!i.is_new).map(item=>`
+            <div class="sync-list-item">
+              <div style="flex:1;min-width:0">
+                <div class="sync-list-item-name">${esc(item.company)} — ${esc(item.title||'')}</div>
+                <div class="sync-list-item-sub">${esc(item.email_subject||'')}</div>
+              </div>
+              <span class="dup-badge">Already tracked</span>
+            </div>`).join('')}
+      </div>
+
+      <!-- Review tab -->
+      <div id="sync-panel-review" class="sync-list" style="display:none">
+        ${skipped === 0
+          ? `<div style="text-align:center;padding:1.5rem;color:var(--text3);font-size:13px">No emails need review ✓</div>`
+          : (result.skipped_emails||[]).map((e,i)=>`
+            <div class="sync-list-item" style="flex-direction:column;align-items:stretch;gap:6px">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+                <div style="flex:1;min-width:0">
+                  <div class="sync-list-item-name">${esc(e.subject||'No subject')}</div>
+                  <div class="sync-list-item-sub">${esc(e.from||'')} · ${esc(e.date||'')}</div>
+                  ${e.snippet?`<div style="font-size:11px;color:var(--text3);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(e.snippet)}</div>`:''}
+                </div>
+                <button class="btn btn-primary btn-sm add-skipped-btn" 
+                  data-subject="${esc(e.subject||'')}"
+                  data-from="${esc(e.from||'')}"
+                  data-date="${esc(e.date||'')}"
+                  data-snippet="${esc(e.snippet||'')}"
+                  style="flex-shrink:0;white-space:nowrap">
+                  + Add
+                </button>
+              </div>
+            </div>`).join('')}
+      </div>
+
       <div class="modal-footer">
-        <button class="btn btn-primary btn-full" id="done-btn">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="13" height="13" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+        <button class="btn btn-primary btn-full" id="sync-done-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="13" height="13"><polyline points="20 6 9 17 4 12"/></svg>
           View my pipeline
         </button>
       </div>`);
-    document.getElementById('done-btn').addEventListener('click', onDone);
+
+    // Tab switching
+    document.querySelectorAll('.sync-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.sync-tab').forEach(t => {
+          t.style.background = 'var(--surface2)';
+          t.style.color = t.dataset.tab === 'review' && skipped > 0 ? 'var(--amber)' : 'var(--text2)';
+        });
+        tab.style.background = 'var(--accent-bg)';
+        tab.style.color = 'var(--accent2)';
+        document.querySelectorAll('[id^="sync-panel-"]').forEach(p => p.style.display = 'none');
+        document.getElementById(`sync-panel-${tab.dataset.tab}`).style.display = '';
+      });
+    });
+
+    // Add skipped email manually
+    document.querySelectorAll('.add-skipped-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const subject = btn.dataset.subject;
+        const from    = btn.dataset.from;
+        const date    = btn.dataset.date;
+        const snippet = btn.dataset.snippet;
+        // Extract company from sender email domain
+        const domain  = from.match(/@([^>]+)/)?.[1]?.split('.')[0] || '';
+        if (onManualAdd) onManualAdd({ subject, from, date, snippet, domain });
+      });
+    });
+
+    document.getElementById('sync-done-btn').addEventListener('click', onDone);
   }
 
   function showSyncError(onRetry) {

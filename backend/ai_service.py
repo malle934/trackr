@@ -15,14 +15,17 @@ Each object must have:
   "company":       "Company name (required)",
   "title":         "Job title or role",
   "stage":         "applied|phone|interview|final|offer|rejected",
-  "applied":       "YYYY-MM-DD date or empty string",
+  "applied":       "YYYY-MM-DD — copy the date EXACTLY as given in the input, do NOT convert timezone",
   "salary":        "salary string or empty",
   "location":      "location or empty",
   "url":           "job URL or empty",
   "notes":         "1 sentence summary",
   "email_subject": "original subject line",
-  "email_date":    "YYYY-MM-DD"
+  "email_date":    "YYYY-MM-DD — copy exactly from Date field in input"
 }
+
+IMPORTANT: Use the exact date from the input. Do NOT convert to UTC. 
+If input says Date:2026-05-30, use "applied":"2026-05-30" exactly.
 
 Stage detection rules:
 - application received / thank you for applying → "applied"
