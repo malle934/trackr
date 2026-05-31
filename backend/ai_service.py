@@ -5,7 +5,7 @@ import google.generativeai as genai
 
 # Configure Gemini
 genai.configure(api_key=os.getenv("GEMINI_API_KEY", ""))
-model = genai.GenerativeModel("gemini-1.5-flash")
+model = genai.GenerativeModel("gemini-2.5-flash")
 
 BATCH_SYSTEM = """You extract job application details from email subjects and snippets.
 Return ONLY a valid JSON array. No markdown, no backticks, no explanation.
