@@ -69,11 +69,13 @@ const api = (() => {
 
   // ── Gmail sync ────────────────────────────
 
-  async function syncGmail(email, days = 90, maxResults = 50) {
-    return request(
-      'POST',
-      `/api/sync/${encodeURIComponent(email)}?days=${days}&max_results=${maxResults}`
-    );
+  async function getSyncStatus() {
+    return request('GET', '/api/sync/status');
+  }
+
+  // Incremental — backend decides date range automatically
+  async function syncGmail(email) {
+    return request('POST', `/api/sync/${encodeURIComponent(email)}`);
   }
 
   return {
@@ -86,6 +88,7 @@ const api = (() => {
     getAuthStatus,
     startGmailAuth,
     disconnectGmail,
+    getSyncStatus,
     syncGmail,
   };
 })();

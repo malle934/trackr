@@ -179,35 +179,32 @@
   // ── Gmail sync ─────────────────────────────
   async function handleGmail() {
     let connectedEmails = [];
+    let accounts        = [];
     try {
       const status = await api.getAuthStatus();
-      connectedEmails = status.emails || [];
+      connectedEmails  = status.emails  || [];
+      accounts         = status.accounts|| [];
     } catch (err) { console.error(err); }
 
     modal.openGmail(
       connectedEmails,
+      accounts,
       () => api.startGmailAuth(),
       handleGmailSync,
       handleGmailDisconnect
     );
   }
 
-  async function handleGmailSync(email, fromDate, toDate) {
+  async function handleGmailSync(email) {
     modal.showSyncing(email);
     try {
-      const days = _calcDays(fromDate, toDate);
-      const result = await api.syncGmail(email, days, 200);
+      const result = await api.syncGmail(email);
       await refreshData();
       modal.showSyncResults(result, () => { modal.close(); switchTab('pipeline'); });
     } catch (err) {
       modal.showSyncError(() => api.startGmailAuth());
+      console.error(err);
     }
-  }
-
-  function _calcDays(from, to) {
-    if (!from || !to) return 90;
-    const diff = new Date(to) - new Date(from);
-    return Math.max(1, Math.ceil(diff / (1000*60*60*24)));
   }
 
   async function handleGmailDisconnect(email) {

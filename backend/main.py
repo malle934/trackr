@@ -194,9 +194,20 @@ def gmail_callback(code: str = Query(...), state: str = Query(...), error: Optio
 
 @app.get("/auth/status")
 def auth_status():
-    """List all connected Gmail accounts."""
-    emails = storage.get_all_connected_emails()
-    return {"connected": len(emails) > 0, "emails": emails}
+    """List all connected Gmail accounts with sync history."""
+    emails       = storage.get_all_connected_emails()
+    sync_statuses= storage.get_all_sync_statuses()
+    accounts     = []
+    for email in emails:
+        history = sync_statuses.get(email)
+        accounts.append({
+            "email":        email,
+            "last_synced":  history["last_synced"]  if history else None,
+            "synced_until": history["synced_until"] if history else None,
+            "total_fetched":history["total_fetched"]if history else 0,
+            "is_first_sync":history is None,
+        })
+    return {"connected": len(emails) > 0, "emails": emails, "accounts": accounts}
 
 
 @app.delete("/auth/disconnect/{email}")
@@ -207,48 +218,58 @@ def disconnect_gmail(email: str):
 
 
 # ─────────────────────────────────────────
-# GMAIL SYNC
+# GMAIL SYNC STATUS
+# ─────────────────────────────────────────
+
+@app.get("/api/sync/status")
+def get_sync_status():
+    """Get sync history for all connected Gmail accounts."""
+    return storage.get_all_sync_statuses()
+
+
+# ─────────────────────────────────────────
+# GMAIL SYNC — INCREMENTAL
 # ─────────────────────────────────────────
 
 @app.post("/api/sync/{email}")
-def sync_gmail(
-    email: str,
-    days: int = Query(default=90, ge=1, le=365),
-    max_results: int = Query(default=50, ge=1, le=200)
-) -> SyncResult:
-    """Sync job emails from a connected Gmail account."""
+def sync_gmail(email: str) -> SyncResult:
+    """
+    Smart incremental Gmail sync:
+    - First sync  → fetch last 90 days
+    - Later syncs → fetch only since last sync date
+    """
     import traceback
 
-    print(f"\n── Sync requested for {email} (days={days}, max={max_results}) ──")
+    print(f"\n── Sync requested for {email} ──")
 
     # Check credentials
     creds = gmail_service.get_credentials(email)
     if not creds:
-        print(f"ERROR: No credentials found for {email}")
         raise HTTPException(
             status_code=401,
             detail=f"Gmail account '{email}' is not connected. Please authenticate first."
         )
     print(f"✓ Credentials loaded for {email}")
 
-    # Fetch raw emails from Gmail
+    # Smart incremental fetch
     try:
-        print("Fetching emails from Gmail API...")
-        raw_emails = gmail_service.fetch_job_emails(email, days=days, max_results=max_results)
-        print(f"✓ Fetched {len(raw_emails)} raw emails")
+        raw_emails, fetch_from, is_first = gmail_service.fetch_job_emails_incremental(email)
+        print(f"✓ Found {len(raw_emails)} job emails (scanned since {fetch_from})")
     except Exception as e:
         print(f"ERROR fetching emails:\n{traceback.format_exc()}")
         raise HTTPException(status_code=502, detail=f"Gmail fetch failed: {str(e)}")
 
     if not raw_emails:
-        print("No job-related emails found in inbox")
+        # Still update sync history even if no new emails
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        storage.save_sync_history(email, today, 0)
+        print("No new job emails found")
         return SyncResult(found=0, added=0, duplicates=0, items=[])
 
-    # AI batch parse
+    # Gemini AI parse
     try:
-        print(f"Sending {len(raw_emails)} emails to Claude AI for parsing...")
         parsed_list = ai_service.parse_batch(raw_emails)
-        print(f"✓ Claude parsed {len(parsed_list)} job applications")
+        print(f"✓ Gemini parsed {len(parsed_list)} job applications")
     except Exception as e:
         print(f"ERROR in AI parsing:\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"AI parsing failed: {str(e)}")
@@ -266,21 +287,25 @@ def sync_gmail(
                 print(f"  + Added: {parsed.get('company')} — {parsed.get('title')}")
             else:
                 duplicates += 1
-                print(f"  ~ Skipped duplicate: {parsed.get('company')}")
+                print(f"  ~ Duplicate: {parsed.get('company')}")
             items.append({
-                "id": app.id,
-                "company": app.company,
-                "title": app.title,
-                "stage": app.stage,
+                "id":            app.id,
+                "company":       app.company,
+                "title":         app.title,
+                "stage":         app.stage,
                 "email_subject": parsed.get("email_subject", ""),
-                "email_date": parsed.get("email_date", ""),
-                "is_new": is_new,
+                "email_date":    parsed.get("email_date", ""),
+                "is_new":        is_new,
             })
         except Exception as e:
             print(f"  ERROR upserting {parsed.get('company')}: {e}")
             continue
 
-    print(f"✓ Sync complete — {added} added, {duplicates} duplicates\n")
+    # Save sync history — mark today as last synced
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    storage.save_sync_history(email, today, len(raw_emails))
+    print(f"✓ Sync complete — {added} added, {duplicates} skipped\n")
+
     return SyncResult(
         found=len(parsed_list),
         added=added,

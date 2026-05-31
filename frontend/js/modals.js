@@ -270,46 +270,43 @@ const modal = (() => {
 
   // ── Gmail sync ────────────────────────────
 
-  function openGmail(connectedEmails, onConnect, onSync, onDisconnect) {
-    const today    = new Date().toISOString().slice(0,10);
-    const ninetyAgo = new Date(Date.now()-90*864e5).toISOString().slice(0,10);
+  function openGmail(connectedEmails, accounts, onConnect, onSync, onDisconnect) {
+    const emailListHtml = accounts.length
+      ? accounts.map(acc => {
+          const lastSync    = acc.last_synced
+            ? new Date(acc.last_synced).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})
+            : null;
+          const isFirst     = acc.is_first_sync;
+          const syncLabel   = isFirst
+            ? 'Will fetch last 90 days'
+            : `Will fetch since ${acc.synced_until || 'last sync'}`;
+          const syncSubtext = isFirst
+            ? 'First sync — reads 3 months of emails'
+            : `Last synced: ${lastSync} · ${acc.total_fetched || 0} emails fetched so far`;
 
-    const emailListHtml = connectedEmails.length
-      ? connectedEmails.map(e => `
-          <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;margin-bottom:8px">
+          return `
+          <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:10px">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
               <div style="display:flex;align-items:center;gap:8px">
                 <div style="width:26px;height:26px;border-radius:50%;background:var(--green-bg);border:1px solid var(--green-border);display:flex;align-items:center;justify-content:center">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2" width="13" height="13"><polyline points="20 6 9 17 4 12"/></svg>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.5" width="12" height="12"><polyline points="20 6 9 17 4 12"/></svg>
                 </div>
-                <span style="font-size:13px;color:var(--text);font-weight:500">${esc(e)}</span>
+                <div>
+                  <div style="font-size:13px;color:var(--text);font-weight:500">${esc(acc.email)}</div>
+                  <div style="font-size:11px;color:var(--text3);margin-top:1px">${syncSubtext}</div>
+                </div>
               </div>
-              <button class="btn btn-danger btn-sm disc-btn" data-email="${esc(e)}">Disconnect</button>
+              <button class="btn btn-danger btn-sm disc-btn" data-email="${esc(acc.email)}">Disconnect</button>
             </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end">
-              <div>
-                <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--text3);margin-bottom:4px">From</div>
-                <input type="date" class="sync-from" data-email="${esc(e)}" value="${ninetyAgo}"
-                  style="width:100%;padding:6px 8px;background:var(--surface3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:DM Sans,sans-serif;font-size:12px;outline:none">
-              </div>
-              <div>
-                <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--text3);margin-bottom:4px">To</div>
-                <input type="date" class="sync-to" data-email="${esc(e)}" value="${today}"
-                  style="width:100%;padding:6px 8px;background:var(--surface3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:DM Sans,sans-serif;font-size:12px;outline:none">
-              </div>
-              <button class="btn btn-green btn-sm sync-btn" data-email="${esc(e)}" style="white-space:nowrap">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
-                Sync now
-              </button>
+            <div style="background:var(--surface3);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;margin-bottom:10px;font-size:12px;color:var(--accent2);display:flex;align-items:center;gap:6px">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              ${syncLabel}
             </div>
-            <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
-              <button class="quick-range btn btn-ghost btn-sm" data-days="30" data-email="${esc(e)}">30 days</button>
-              <button class="quick-range btn btn-ghost btn-sm" data-days="60" data-email="${esc(e)}">60 days</button>
-              <button class="quick-range btn btn-ghost btn-sm active" data-days="90" data-email="${esc(e)}">90 days</button>
-              <button class="quick-range btn btn-ghost btn-sm" data-days="180" data-email="${esc(e)}">6 months</button>
-              <button class="quick-range btn btn-ghost btn-sm" data-days="365" data-email="${esc(e)}">1 year</button>
-            </div>
-          </div>`).join('')
+            <button class="btn btn-green btn-full sync-btn" data-email="${esc(acc.email)}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+              ${isFirst ? 'Start first sync (90 days)' : 'Sync new emails only'}
+            </button>
+          </div>`}).join('')
       : `<div class="alert alert-info" style="margin-bottom:0">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
           No Gmail accounts connected yet. Click "Connect Gmail" below.
@@ -324,20 +321,18 @@ const modal = (() => {
         ${closeBtn()}
       </div>
 
-      <div style="margin-bottom:16px">
+      <div style="margin-bottom:14px">
         <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.07em;color:var(--text3);margin-bottom:10px;font-weight:500">Connected accounts</div>
         ${emailListHtml}
       </div>
 
-      <div style="margin-bottom:4px">
-        <button class="btn btn-primary btn-full" id="connect-btn">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-          Connect new Gmail account
-        </button>
-        <div class="alert alert-info" style="margin-top:10px;margin-bottom:0">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-          Read-only OAuth2 access. Your data never leaves Google + this app.
-        </div>
+      <button class="btn btn-primary btn-full" id="connect-btn" style="margin-bottom:10px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        Connect new Gmail account
+      </button>
+      <div class="alert alert-info" style="margin-bottom:0">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        Read-only OAuth2. Your emails never leave Google + this app.
       </div>
 
       <div class="modal-footer">
@@ -345,32 +340,9 @@ const modal = (() => {
       </div>`);
 
     document.getElementById('connect-btn').addEventListener('click', onConnect);
-
-    document.querySelectorAll('.sync-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const email = btn.dataset.email;
-        const fromEl = document.querySelector(`.sync-from[data-email="${email}"]`);
-        const toEl   = document.querySelector(`.sync-to[data-email="${email}"]`);
-        onSync(email, fromEl?.value, toEl?.value);
-      });
-    });
-
-    document.querySelectorAll('.quick-range').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const email = btn.dataset.email;
-        const days  = parseInt(btn.dataset.days);
-        const from  = new Date(Date.now() - days*864e5).toISOString().slice(0,10);
-        const to    = new Date().toISOString().slice(0,10);
-        const fromEl = document.querySelector(`.sync-from[data-email="${email}"]`);
-        const toEl   = document.querySelector(`.sync-to[data-email="${email}"]`);
-        if (fromEl) fromEl.value = from;
-        if (toEl)   toEl.value   = to;
-        // Highlight active quick range
-        document.querySelectorAll(`.quick-range[data-email="${email}"]`).forEach(b=>b.classList.remove('active'));
-        btn.classList.add('active');
-      });
-    });
-
+    document.querySelectorAll('.sync-btn').forEach(btn =>
+      btn.addEventListener('click', () => onSync(btn.dataset.email))
+    );
     document.querySelectorAll('.disc-btn').forEach(btn =>
       btn.addEventListener('click', () => onDisconnect(btn.dataset.email))
     );
@@ -379,8 +351,8 @@ const modal = (() => {
   function showSyncing(email) {
     setContent(`<div class="loading-center">
       <div class="spinner"></div>
-      <p>Scanning Gmail inbox…</p>
-      <small>Reading emails for ${esc(email)} — optimized single API call</small>
+      <p>Syncing Gmail…</p>
+      <small>Scanning inbox for job emails — keyword filtered</small>
     </div>`);
   }
 
