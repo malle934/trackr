@@ -223,7 +223,7 @@ const modal = (() => {
       </div>
       <div class="alert alert-info">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        Paste any job confirmation email, interview invite, offer letter, or job description. Claude AI will extract all details automatically.
+        Paste any job confirmation email, interview invite, offer letter, or job description. Gemini AI will extract all details automatically.
       </div>
       <div class="form-field">
         <label>Paste content</label>
@@ -234,7 +234,7 @@ const modal = (() => {
         <div style="margin-left:auto">
           <button class="btn btn-primary" id="parse-btn">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13" aria-hidden="true"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-            Parse with Claude AI
+            Parse with Gemini AI
           </button>
         </div>
       </div>`);
@@ -249,7 +249,7 @@ const modal = (() => {
   function showParsing() {
     setContent(`<div class="loading-center">
       <div class="spinner"></div>
-      <p>Analysing with Claude AI…</p>
+      <p>Analysing with Gemini AI…</p>
       <small>Extracting company, role, stage, and dates</small>
     </div>`);
   }
